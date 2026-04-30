@@ -34,8 +34,12 @@ def format_book_detailed(book, index, total):
 
     result += f"📖 <i>Описание:</i>\n{description}\n\n"
 
+    if book.get("thumbnail"):
+        result += f"🖼 <a href='{book['thumbnail']}'>Обложка</a>\n"
     if book.get("link"):
         result += f"🔗 <a href='{book['link']}'>Посмотреть полное описание</a>\n\n"
+    else:
+        result += "\n"
 
     result += f"📍 Книга {index + 1} из {total}"
     return result

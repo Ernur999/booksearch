@@ -72,9 +72,19 @@ def get_library_book_keyboard(book_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_history_keyboard() -> InlineKeyboardMarkup:
-    """Get keyboard for search history"""
-    buttons = [
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")],
-    ]
+def get_history_keyboard(history: list) -> InlineKeyboardMarkup:
+    """Get keyboard for search history."""
+    buttons = []
+    for index, query in enumerate(history, start=1):
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{index}. {query[:30]}",
+                    callback_data=f"search_history:{index - 1}",
+                )
+            ]
+        )
+
+    buttons.append([InlineKeyboardButton(text="🧹 Очистить историю", callback_data="clear_history")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)

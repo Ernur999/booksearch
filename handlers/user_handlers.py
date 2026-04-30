@@ -83,25 +83,31 @@ async def show_library(message: types.Message):
     )
 
 
-@router.message(F.text == "🔍 История поисков")
-async def show_search_history(message: types.Message):
-    """Show search history"""
-    user_id = message.from_user.id
-    history = db.get_search_history(user_id, limit=10)
-    
-    if not history:
-        await message.answer(
-            "🔍 История поисков пуста!",
-            reply_markup=get_main_keyboard()
-        )
-        return
-    
+def format_history_text(history: list) -> str:
     text = "🔍 Твоя история поисков:\n\n"
     for i, query in enumerate(history, 1):
         text += f"{i}. {query}\n"
-    
-    text += "\n📝 Напиши одно из этих слов для повторного поиска"
-    await message.answer(text, reply_markup=get_history_keyboard())
+    text += "\n📝 Выбери один из запросов ниже или очисти историю"
+    return text
+
+
+@router.message(F.text == "🔍 История поисков")
+async def show_search_history(message: types.Message):
+    """Show search history."""
+    user_id = message.from_user.id
+    history = db.get_search_history(user_id, limit=10)
+
+    if not history:
+        await message.answer(
+            "🔍 История поисков пуста!",
+            reply_markup=get_main_keyboard(),
+        )
+        return
+
+    await message.answer(
+        format_history_text(history),
+        reply_markup=get_history_keyboard(history),
+    )
 
 
 @router.message(F.text == "❌ История последних")
@@ -170,11 +176,19 @@ async def handle_message(message: types.Message):
         return
 
     user_search_results[user_id] = books
-    await message.answer(
-        format_book_detailed(books[0], 0, len(books)),
-        parse_mode="HTML",
-        reply_markup=get_book_keyboards(books[0]["title"], 0, len(books)),
-    )
+    if books[0].get("thumbnail"):
+        await message.answer_photo(
+            photo=books[0]["thumbnail"],
+            caption=format_book_detailed(books[0], 0, len(books)),
+            parse_mode="HTML",
+            reply_markup=get_book_keyboards(books[0]["title"], 0, len(books)),
+        )
+    else:
+        await message.answer(
+            format_book_detailed(books[0], 0, len(books)),
+            parse_mode="HTML",
+            reply_markup=get_book_keyboards(books[0]["title"], 0, len(books)),
+        )
 
 
 @router.callback_query(F.data.startswith("add_library:"))
@@ -271,6 +285,54 @@ async def show_book_callback(callback: types.CallbackQuery):
         await callback.answer()
     except Exception as e:
         await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("search_history:"))
+async def search_history_callback(callback: types.CallbackQuery):
+    """Repeat a previous search from history."""
+    user_id = callback.from_user.id
+
+    try:
+        index = int(callback.data.split(":")[1])
+        history = db.get_search_history(user_id, limit=10)
+
+        if index < 0 or index >= len(history):
+            await callback.answer("❌ Запрос не найден", show_alert=True)
+            return
+
+        query = history[index]
+        books = await search_books(query)
+
+        if not books:
+            await callback.message.edit_text(
+                "❌ Книги не найдены. Попробуй другой запрос.",
+                reply_markup=get_main_keyboard(),
+            )
+            await callback.answer()
+            return
+
+        user_search_results[user_id] = books
+        await callback.message.edit_text(
+            format_book_detailed(books[0], 0, len(books)),
+            parse_mode="HTML",
+            reply_markup=get_book_keyboards(books[0]["title"], 0, len(books)),
+        )
+        await callback.answer()
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+@router.callback_query(F.data == "clear_history")
+async def clear_history_callback(callback: types.CallbackQuery):
+    """Clear search history."""
+    user_id = callback.from_user.id
+    db.clear_search_history(user_id)
+    await callback.message.edit_text("🧹 История поисков очищена!")
+    await callback.message.answer(
+        "Вы можете продолжить работу с ботом:",
+        reply_markup=get_main_keyboard(),
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("view_library_book:"))

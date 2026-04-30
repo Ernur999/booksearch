@@ -32,10 +32,15 @@ class BookDatabase:
                     authors TEXT,
                     description TEXT,
                     link TEXT,
+                    thumbnail TEXT,
                     added_date DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
+            cursor.execute("PRAGMA table_info(user_library)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "thumbnail" not in columns:
+                cursor.execute("ALTER TABLE user_library ADD COLUMN thumbnail TEXT")
 
     def add_search(self, user_id: int, query: str) -> None:
         """Add search to history."""
@@ -61,14 +66,15 @@ class BookDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """INSERT INTO user_library (user_id, title, authors, description, link)
-                   VALUES (?, ?, ?, ?, ?)""",
+                """INSERT INTO user_library (user_id, title, authors, description, link, thumbnail)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 (
                     user_id,
                     book.get("title", ""),
                     book.get("authors", ""),
                     book.get("description", "")[:500],
                     book.get("link", ""),
+                    book.get("thumbnail", ""),
                 ),
             )
 
@@ -77,7 +83,7 @@ class BookDatabase:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """SELECT id, title, authors, description, link, added_date
+                """SELECT id, title, authors, description, link, thumbnail, added_date
                    FROM user_library WHERE user_id = ? ORDER BY added_date DESC""",
                 (user_id,),
             )
@@ -90,7 +96,8 @@ class BookDatabase:
                         "authors": row[2],
                         "description": row[3],
                         "link": row[4],
-                        "added_date": row[5],
+                        "thumbnail": row[5],
+                        "added_date": row[6],
                     }
                 )
             return books
@@ -114,3 +121,12 @@ class BookDatabase:
                 (user_id, title, authors),
             )
             return cursor.fetchone() is not None
+
+    def clear_search_history(self, user_id: int) -> None:
+        """Clear the user's search history."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM search_history WHERE user_id = ?",
+                (user_id,),
+            )
