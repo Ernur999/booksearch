@@ -8,7 +8,8 @@ from keyboards import (
     get_book_keyboards,
     get_library_keyboard,
     get_library_book_keyboard,
-    get_history_keyboard
+    get_library_overview_keyboard,
+    get_history_keyboard,
 )
 
 router = Router()
@@ -50,27 +51,36 @@ async def handle_help(message: types.Message):
     )
 
 
-@router.message(F.text == "📚 Моя библиотека")
-async def show_library(message: types.Message):
-    """Show user's library"""
-    user_id = message.from_user.id
-    books = db.get_library(user_id)
-    
-    if not books:
-        await message.answer(
-            "📚 Твоя библиотека пуста!\n\n"
-            "Поищи книги и добавь их в библиотеку 📖",
-            reply_markup=get_main_keyboard()
-        )
-        return
-    
+def format_library_text(books):
     text = f"📚 Твоя библиотека ({len(books)} книг):\n\n"
     for i, book in enumerate(books, 1):
         text += f"{i}. 📖 <b>{book['title']}</b>\n"
         text += f"   ✍️ {book['authors']}\n"
-        text += f"   📅 Добавлено: {book['added_date'][:10]}\n\n"
-    
-    await message.answer(text, parse_mode="HTML", reply_markup=get_library_keyboard())
+        if book.get("added_date"):
+            text += f"   📅 Добавлено: {book['added_date'][:10]}\n"
+        text += "\n"
+    return text
+
+
+@router.message(F.text == "📚 Моя библиотека")
+async def show_library(message: types.Message):
+    """Show user's library."""
+    user_id = message.from_user.id
+    books = db.get_library(user_id)
+
+    if not books:
+        await message.answer(
+            "📚 Твоя библиотека пуста!\n\n"
+            "Поищи книги и добавь их в библиотеку 📖",
+            reply_markup=get_main_keyboard(),
+        )
+        return
+
+    await message.answer(
+        format_library_text(books),
+        parse_mode="HTML",
+        reply_markup=get_library_overview_keyboard(books),
+    )
 
 
 @router.message(F.text == "🔍 История поисков")
@@ -139,7 +149,7 @@ async def show_info(message: types.Message):
 
 @router.message()
 async def handle_message(message: types.Message):
-    """Handle text messages with book search"""
+    """Handle text messages with book search."""
     user_id = message.from_user.id
     query = message.text.strip()
 
@@ -147,29 +157,23 @@ async def handle_message(message: types.Message):
         await message.answer("❌ Пожалуйста, введи название книги")
         return
 
-    # Add to search history
     db.add_search(user_id, query)
-
-    # Show loading message
     await message.answer("🔍 Поиск книг...")
 
-    books = search_books(query)
-    
+    books = await search_books(query)
+
     if not books:
         await message.answer(
             "❌ Книги не найдены. Попробуй другой запрос.",
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyboard(),
         )
         return
-    
-    # Store results for this user
+
     user_search_results[user_id] = books
-    
-    # Show first book
     await message.answer(
         format_book_detailed(books[0], 0, len(books)),
         parse_mode="HTML",
-        reply_markup=get_book_keyboards(books[0]['title'], 0, len(books))
+        reply_markup=get_book_keyboards(books[0]["title"], 0, len(books)),
     )
 
 
@@ -189,26 +193,24 @@ async def add_to_library_callback(callback: types.CallbackQuery):
         book = books[book_index]
         
         # Check if already in library
-        if db.book_in_library(user_id, book['title']):
+        if db.book_in_library(user_id, book['title'], book['authors']):
             await callback.answer("⚠️ Эта книга уже в твоей библиотеке!", show_alert=True)
             return
         
         db.add_to_library(user_id, book)
         await callback.answer(f"✅ '{book['title']}' добавлена в библиотеку!")
-        
-        # Show next book
+
         if book_index + 1 < len(books):
             next_book = books[book_index + 1]
             await callback.message.edit_text(
                 format_book_detailed(next_book, book_index + 1, len(books)),
                 parse_mode="HTML",
-                reply_markup=get_book_keyboards(next_book['title'], book_index + 1, len(books))
+                reply_markup=get_book_keyboards(next_book["title"], book_index + 1, len(books)),
             )
         else:
             await callback.message.edit_text(
                 "✅ Это была последняя книга из результатов поиска!\n\n"
-                "Введи новый запрос для поиска",
-                reply_markup=get_main_keyboard()
+                "Введи новый запрос для поиска"
             )
     
     except Exception as e:
@@ -271,69 +273,82 @@ async def show_book_callback(callback: types.CallbackQuery):
         await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("view_library_book:"))
+async def view_library_book_callback(callback: types.CallbackQuery):
+    """Show a book saved in the user's library."""
+    user_id = callback.from_user.id
+
+    try:
+        book_id = int(callback.data.split(":")[1])
+        books = db.get_library(user_id)
+        book = next((b for b in books if b["id"] == book_id), None)
+
+        if not book:
+            await callback.answer("❌ Книга не найдена!", show_alert=True)
+            return
+
+        await callback.message.edit_text(
+            format_book_detailed(book, 0, 1),
+            parse_mode="HTML",
+            reply_markup=get_library_book_keyboard(book_id),
+        )
+        await callback.answer()
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
 @router.callback_query(F.data == "delete_last_book")
 async def delete_last_book_callback(callback: types.CallbackQuery):
-    """Delete last added book"""
+    """Delete last added book."""
     user_id = callback.from_user.id
     books = db.get_library(user_id)
-    
+
     if not books:
         await callback.answer("❌ Нет книг для удаления!", show_alert=True)
         return
-    
+
     last_book = books[0]
-    db.remove_from_library(last_book['id'], user_id)
+    db.remove_from_library(last_book["id"], user_id)
     await callback.answer(f"✅ '{last_book['title']}' удалена из библиотеки!")
-    
-    # Refresh library view
+
     remaining_books = db.get_library(user_id)
     if remaining_books:
-        text = f"📚 Твоя библиотека ({len(remaining_books)} книг):\n\n"
-        for i, book in enumerate(remaining_books, 1):
-            text += f"{i}. 📖 <b>{book['title']}</b>\n"
-            text += f"   ✍️ {book['authors']}\n"
-            text += f"   📅 Добавлено: {book['added_date'][:10]}\n\n"
-        
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_library_keyboard())
-    else:
         await callback.message.edit_text(
-            "📚 Твоя библиотека пуста!",
-            reply_markup=get_main_keyboard()
+            format_library_text(remaining_books),
+            parse_mode="HTML",
+            reply_markup=get_library_overview_keyboard(remaining_books),
         )
+    else:
+        await callback.message.edit_text("📚 Твоя библиотека пуста!")
 
 
 @router.callback_query(F.data.startswith("delete_book:"))
 async def delete_book_callback(callback: types.CallbackQuery):
-    """Delete specific book from library"""
+    """Delete specific book from library."""
     user_id = callback.from_user.id
-    
+
     try:
         book_id = int(callback.data.split(":")[1])
         books = db.get_library(user_id)
-        
-        book = next((b for b in books if b['id'] == book_id), None)
+
+        book = next((b for b in books if b["id"] == book_id), None)
         if not book:
             await callback.answer("❌ Книга не найдена!", show_alert=True)
             return
-        
+
         db.remove_from_library(book_id, user_id)
         await callback.answer(f"✅ '{book['title']}' удалена!")
-        
-        # Go back to library
+
         remaining_books = db.get_library(user_id)
         if remaining_books:
-            text = f"📚 Твоя библиотека ({len(remaining_books)} книг):\n\n"
-            for i, book in enumerate(remaining_books, 1):
-                text += f"{i}. 📖 <b>{book['title']}</b>\n"
-                text += f"   ✍️ {book['authors']}\n\n"
-            
-            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_library_keyboard())
-        else:
             await callback.message.edit_text(
-                "📚 Твоя библиотека пуста!",
-                reply_markup=get_main_keyboard()
+                format_library_text(remaining_books),
+                parse_mode="HTML",
+                reply_markup=get_library_overview_keyboard(remaining_books),
             )
-    
+        else:
+            await callback.message.edit_text("📚 Твоя библиотека пуста!")
+
     except Exception as e:
         await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
@@ -347,19 +362,18 @@ async def back_to_search(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "back_to_library")
 async def back_to_library(callback: types.CallbackQuery):
-    """Go back to library"""
+    """Go back to library."""
     user_id = callback.from_user.id
     books = db.get_library(user_id)
-    
+
     if not books:
-        text = "📚 Твоя библиотека пуста!"
+        await callback.message.edit_text("📚 Твоя библиотека пуста!")
     else:
-        text = f"📚 Твоя библиотека ({len(books)} книг):\n\n"
-        for i, book in enumerate(books, 1):
-            text += f"{i}. 📖 <b>{book['title']}</b>\n"
-            text += f"   ✍️ {book['authors']}\n\n"
-    
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_library_keyboard())
+        await callback.message.edit_text(
+            format_library_text(books),
+            parse_mode="HTML",
+            reply_markup=get_library_overview_keyboard(books),
+        )
     await callback.answer()
 
 

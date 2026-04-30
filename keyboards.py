@@ -36,7 +36,7 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
 
 
 def get_library_keyboard() -> InlineKeyboardMarkup:
-    """Get keyboard for library management"""
+    """Get keyboard for library management."""
     buttons = [
         [InlineKeyboardButton(text="🗑️ Удалить последнюю", callback_data="delete_last_book")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_search")],
@@ -44,8 +44,27 @@ def get_library_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def get_library_overview_keyboard(books) -> InlineKeyboardMarkup:
+    """Get keyboard for library overview with book selection."""
+    buttons = []
+    for index, book in enumerate(books[:6], start=1):
+        title = book["title"]
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{index}. {title[:25]}",
+                    callback_data=f"view_library_book:{book['id']}",
+                )
+            ]
+        )
+
+    buttons.append([InlineKeyboardButton(text="🗑️ Удалить последнюю", callback_data="delete_last_book")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_search")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def get_library_book_keyboard(book_id: int) -> InlineKeyboardMarkup:
-    """Get keyboard for individual library book"""
+    """Get keyboard for individual library book."""
     buttons = [
         [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_book:{book_id}")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_library")],

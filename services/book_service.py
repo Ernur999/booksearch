@@ -1,27 +1,41 @@
+import asyncio
+from typing import Dict, List
 import requests
-from config import GOOGLE_BOOKS_API_URL
+from config import GOOGLE_BOOKS_API_URL, GOOGLE_BOOKS_API_KEY
 
 
-def search_books(query):
-    """Search for books using Google Books API"""
+async def search_books(query: str) -> List[Dict[str, str]]:
+    """Search for books using Google Books API."""
     try:
-        url = f"{GOOGLE_BOOKS_API_URL}?q={query}"
-        response = requests.get(url)
+        params = {
+            "q": query,
+            "maxResults": 5,
+        }
+        if GOOGLE_BOOKS_API_KEY:
+            params["key"] = GOOGLE_BOOKS_API_KEY
+
+        response = await asyncio.to_thread(
+            requests.get,
+            GOOGLE_BOOKS_API_URL,
+            params=params,
+            timeout=10,
+        )
 
         if response.status_code != 200:
             return []
 
         data = response.json()
-        books = []
+        books: List[Dict[str, str]] = []
 
         for item in data.get("items", [])[:5]:
             info = item.get("volumeInfo", {})
-
+            image_links = info.get("imageLinks", {})
             books.append({
                 "title": info.get("title", "Нет названия"),
                 "authors": ", ".join(info.get("authors", ["Неизвестно"])),
                 "description": info.get("description", "Нет описания"),
-                "link": item.get("selfLink", "")
+                "link": info.get("infoLink") or info.get("previewLink") or item.get("selfLink", ""),
+                "thumbnail": image_links.get("thumbnail", ""),
             })
 
         return books
