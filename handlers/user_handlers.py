@@ -1,7 +1,7 @@
 from aiogram import types, F, Router
 from aiogram.filters import Command
-from services.book_service import search_books
-from utils.formatter import format_books, format_book_detailed
+from services.book_service import search_books, get_book_by_id
+from utils.formatter import format_books, format_book_detailed, format_volume_by_id
 from database import BookDatabase
 from keyboards import (
     get_main_keyboard,
@@ -10,6 +10,7 @@ from keyboards import (
     get_library_book_keyboard,
     get_library_overview_keyboard,
     get_history_keyboard,
+    get_volume_add_keyboard,
 )
 
 router = Router()
@@ -27,7 +28,8 @@ async def handle_start(message: types.Message):
         "Просто напиши название книги, и я найду её для тебя! 📚\n\n"
         "Команды:\n"
         "/start - начало\n"
-        "/help - справка",
+        "/help - справка\n"
+        "/book <ID> - получить книгу по ID тома Google Books",
         reply_markup=get_main_keyboard()
     )
 
@@ -46,9 +48,58 @@ async def handle_help(message: types.Message):
         "❌ История последних - удаление последней книги\n\n"
         "Команды:\n"
         "/start - начало\n"
-        "/help - справка",
+        "/help - справка\n"
+        "/book <ID> - получить книгу по ID тома Google Books",
         reply_markup=get_main_keyboard()
     )
+
+
+@router.message(Command("book"))
+async def handle_book_by_id(message: types.Message):
+    """Handle /book <volumeId> command — fetch a specific volume by its Google Books ID."""
+    parts = message.text.strip().split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.answer(
+            "❌ Укажи ID тома.\n\n"
+            "Пример: <code>/book zyTCAlFPjgYC</code>\n\n"
+            "ID тома можно найти в ссылке Google Books:\n"
+            "<code>https://books.google.com/books?id=<b>zyTCAlFPjgYC</b></code>",
+            parse_mode="HTML",
+        )
+        return
+
+    volume_id = parts[1].strip()
+    await message.answer(f"🔍 Получаю информацию о томе <code>{volume_id}</code>...", parse_mode="HTML")
+
+    book = await get_book_by_id(volume_id)
+
+    if not book:
+        await message.answer(
+            f"❌ Том с ID <code>{volume_id}</code> не найден.\n"
+            "Проверь правильность ID и попробуй снова.",
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard(),
+        )
+        return
+
+    text = format_volume_by_id(book)
+
+    if book.get("thumbnail"):
+        await message.answer_photo(
+            photo=book["thumbnail"],
+            caption=text,
+            parse_mode="HTML",
+            reply_markup=get_volume_add_keyboard(book),
+        )
+    else:
+        await message.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=get_volume_add_keyboard(book),
+        )
+
+    # Store result so user can add it to library
+    user_search_results[message.from_user.id] = [book]
 
 
 def format_library_text(books):

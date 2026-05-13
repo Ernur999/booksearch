@@ -88,3 +88,12 @@ def get_history_keyboard(history: list) -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(text="🧹 Очистить историю", callback_data="clear_history")])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_volume_add_keyboard(book: dict) -> InlineKeyboardMarkup:
+    """Get keyboard for a volume fetched by ID — allows adding to library."""
+    buttons = [
+        [InlineKeyboardButton(text="📚 Добавить в библиотеку", callback_data="add_library:0")],
+        [InlineKeyboardButton(text="🔙 В меню", callback_data="back_to_menu")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

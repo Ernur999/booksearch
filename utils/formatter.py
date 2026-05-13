@@ -43,3 +43,32 @@ def format_book_detailed(book, index, total):
 
     result += f"📍 Книга {index + 1} из {total}"
     return result
+
+
+def format_volume_by_id(book: dict) -> str:
+    """Format detailed book info retrieved by volume ID."""
+    result = f"📚 <b>{book['title']}</b>\n"
+    result += f"✍️ <i>{book['authors']}</i>\n\n"
+
+    if book.get("publisher") and book["publisher"] != "Неизвестно":
+        result += f"🏢 <b>Издатель:</b> {book['publisher']}\n"
+    if book.get("publishedDate") and book["publishedDate"] != "Неизвестно":
+        result += f"📅 <b>Дата публикации:</b> {book['publishedDate']}\n"
+    if book.get("pageCount") and book["pageCount"] != "Неизвестно":
+        result += f"📄 <b>Страниц:</b> {book['pageCount']}\n"
+    if book.get("language") and book["language"] != "Неизвестно":
+        result += f"🌐 <b>Язык:</b> {book['language']}\n"
+
+    result += "\n"
+
+    description = book.get("description", "Нет описания")
+    if len(description) > 700:
+        description = description[:700].rstrip() + "..."
+    result += f"📖 <i>Описание:</i>\n{description}\n\n"
+
+    if book.get("thumbnail"):
+        result += f"🖼 <a href='{book['thumbnail']}'>Обложка</a>\n"
+    if book.get("link"):
+        result += f"🔗 <a href='{book['link']}'>Открыть в Google Книгах</a>\n"
+
+    return result
